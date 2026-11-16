@@ -42,7 +42,7 @@ Sur la page Bootlegging, un bloc au-dessus des crimes (même style que le fork T
 
 - À chaque **Copy**, le script lit dans la réponse de Torn le nombre de copies lancées (« Copying 14 Action DVDs ») et le mémorise avec le genre et le niveau de Bootlegging. Il en tire une moyenne de copies par clic, par genre et par niveau.
 - Il conseille le genre dont une copie rapproche le plus le stock du ratio, le **présélectionne** et l'encadre en vert : il ne reste qu'à cliquer sur **Copy**. Une copie qui dépasse la cible d'un genre reste conseillée si elle rapproche l'ensemble du ratio : les cibles montent alors avec le stock, sans bond inutile.
-- Quand tous les genres sont dans la tolérance, ou qu'aucune copie ne rapproche plus du ratio (pas de recherche sans fin du ratio parfait) : **Sell** encadré en vert s'il n'y a rien en file d'attente ; sinon Copy et Sell sont grisés, avec un message à côté de Sell : attendre la fin des copies avant de vendre.
+- Quand tous les genres sont dans la tolérance, ou qu'aucune copie ne rapproche plus du ratio (pas de recherche sans fin du ratio parfait) : **Sell** encadré en vert et Copy grisé s'il n'y a rien en file d'attente ; sinon Copy et Sell sont grisés, avec un message à côté de Sell : attendre la fin des copies avant de vendre.
 
 La présélection d'un genre est un simple choix d'affichage, sans requête au serveur. Le script ne clique jamais sur Copy ni Sell.
 
