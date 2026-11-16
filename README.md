@@ -42,6 +42,7 @@ Sur la page Bootlegging, un bloc au-dessus des crimes (même style que le fork T
 
 - À chaque **Copy**, le script lit dans la réponse de Torn le nombre de copies lancées (« Copying 14 Action DVDs ») et le mémorise avec le genre et le niveau de Bootlegging. Il en tire une moyenne de copies par clic, par genre et par niveau.
 - **Stock minimal** : tant que le stock total (en stock + en file) est sous ce minimum, il conseille de copier. Le minimum n'est pas fixe : c'est le stock où une demi-copie (l'erreur d'arrondi d'un clic) tient dans la tolérance pour chaque genre, le plus petit compris ; il suit donc les copies moyennes par clic. Stock et minimum sont affichés dans l'en-tête.
+- Sell reste grisé tant que le conseil n'est pas de vendre (copies à faire ou en cours).
 - Il conseille le genre dont une copie rapproche le plus le stock du ratio, le **présélectionne** et l'encadre en vert : il ne reste qu'à cliquer sur **Copy**. Une copie qui dépasse la cible d'un genre reste conseillée si elle rapproche l'ensemble du ratio : les cibles montent alors avec le stock, sans bond inutile.
 - Quand tous les genres sont dans la tolérance, ou qu'aucune copie ne rapproche plus du ratio (pas de recherche sans fin du ratio parfait) : **Sell** encadré en vert et Copy grisé s'il n'y a rien en file d'attente ; sinon Copy et Sell sont grisés, avec un message à côté de Sell : attendre la fin des copies avant de vendre.
 
