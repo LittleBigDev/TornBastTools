@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.33
+// @version      1.34
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -891,7 +891,8 @@
 #tbt-dvd .o-ecart { min-width:44px; padding:1px 8px; border-radius:999px; text-align:center; font-weight:700;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--o-go); background:var(--o-go-soft); }
 #tbt-dvd .o-ecart.is-warn { color:var(--o-warn); background:var(--o-warn-soft); }
-#tbt-dvd-attente { margin-right:8px; color:#fbbf24; font-weight:bold; font-size:12px; }`;
+#tbt-dvd-attente { align-self:center; flex:0 0 auto; margin:0 10px; padding:3px 10px; border-radius:999px; white-space:nowrap;
+  background:#451a03; color:#fbbf24; font:600 12px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }`;
 
   function panneauDvd(cible) {
     let p = document.getElementById("tbt-dvd");
@@ -953,8 +954,9 @@
     if (c.attendre && !attente && sell) {
       attente = document.createElement("span");
       attente.id = "tbt-dvd-attente";
-      attente.textContent = "Bon ratio : attendre la fin des copies avant de vendre";
-      sell.before(attente);
+      attente.textContent = "Attendre la fin des copies";
+      // avant la case du bouton (trop étroite pour le message), dans la ligne du crime
+      (sell.closest("[class*=crimeOptionSection]") || sell).before(attente);
     } else if (!c.attendre) attente?.remove();
     ecrire(p.querySelector("#tbt-dvd-conseil"), (c.copier !== undefined
       ? `Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
