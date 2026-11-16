@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.22
+// @version      1.23
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -27,8 +27,9 @@
   const TAUX_TRADERS = {"Alcohol": 0.95, "Artifact": 0.9, "Booster": 0.95, "Candy": 0.95, "Car": 0, "Clothing": 0.25, "Defensive": 0.8, "Drug": 0.95, "Energy Drink": 0.95, "Enhancer": 0.9, "Flower": 0.98, "Jewelry": 0.8, "Material": 0.9, "Medical": 0.9, "Melee": 0.8, "Other": 0.25, "Plushie": 0.98, "Primary": 0.8, "Secondary": 0.8, "Special": 0.9, "Supply Pack": 0.95, "Temporary": 0.95, "Tool": 0.9};
   const PAS_TRADERS = ["wheel clamp"];
   const TAUX_ITEM_MARKET = 0.85;
-  const BONUS_BAZAAR = 0.02;
-  // DONNÉES FIN (PAS_TRADERS : objets refusés par les traders, en minuscules ; BONUS_BAZAAR : points ajoutés au taux des traders)
+  const TAUX_BAZAAR = {"Alcohol": 0.97, "Artifact": 0.92, "Booster": 0.97, "Candy": 0.97, "Car": 0.92, "Clothing": 0.27, "Defensive": 0.82, "Drug": 0.97, "Energy Drink": 0.97, "Enhancer": 0.92, "Flower": 1.0, "Jewelry": 0.82, "Material": 0.92, "Medical": 0.92, "Melee": 0.82, "Other": 0.27, "Plushie": 1.0, "Primary": 0.82, "Secondary": 0.82, "Special": 0.92, "Supply Pack": 0.97, "Temporary": 0.97, "Tool": 0.92};
+  const TAUX_BAZAAR_DEFAUT = 0.27;
+  // DONNÉES FIN (PAS_TRADERS : objets refusés par les traders, en minuscules ; TAUX_BAZAAR : part de la valeur marché retenue pour son bazaar, par catégorie)
 
   const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -75,9 +76,10 @@
   const tauxTraders = (it) => (PAS_TRADERS.includes(it.name.toLowerCase()) ? 0 : TAUX_TRADERS[it.type] || 0.25);
 
   // Meilleur canal d'un objet du catalogue, partagé par tous les boutons :
-  // bazaar (le sien, sans frais, estimation pessimiste) = valeur marché × (taux des traders + BONUS_BAZAAR) ;
+  // bazaar (le sien, sans frais, estimation pessimiste) = valeur marché × TAUX_BAZAAR de la catégorie
+  // (taux des traders + 2 points ; un bazaar ne refuse rien, PAS_TRADERS ne compte pas) ;
   // item market sur l'annonce la plus basse (à défaut la valeur marché) moins 15 % ; à égalité, bazaar puis item market.
-  const netBazaar = (it) => (it.market_value || 0) * (tauxTraders(it) + BONUS_BAZAAR);
+  const netBazaar = (it) => (it.market_value || 0) * (TAUX_BAZAAR[it.type] ?? TAUX_BAZAAR_DEFAUT);
   function meilleurCanal(it, prixBas) {
     const bazaar = netBazaar(it);
     const im = (prixBas || it.market_value || 0) * TAUX_ITEM_MARKET, ville = it.sell_price || 0;
