@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.31
+// @version      1.32
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -1005,6 +1005,7 @@
       lignes().forEach(controle);
     });
   }
-  new MutationObserver(surveiller).observe(document.body, { childList: true, subtree: true });
+  // characterData : Torn change certains textes en place (« 17 queued » → « 50 queued ») sans recréer d'élément
+  new MutationObserver(surveiller).observe(document.body, { childList: true, subtree: true, characterData: true });
   surveiller();
 })();
