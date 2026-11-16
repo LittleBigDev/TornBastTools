@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.32
+// @version      1.33
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -918,9 +918,12 @@
   const ecrire = (el, texte) => { if (el.textContent !== texte) el.textContent = texte; };
 
   function majDvd() {
-    const genres = lireGenres(), copy = document.querySelector('button[aria-label^="Copy,"]');
-    const sell = document.querySelector('button[aria-label^="Sell,"]'), zone = document.querySelector("[class*=currentCrime]");
-    if (genres.length !== GENRES.length || !copy || !sell || !zone) return;
+    // boutons repérés par leur texte (« Copy2 », « Sell5 ») : désactivés faute de nerve, ils changent de libellé
+    const boutons = [...document.querySelectorAll("button[class*=commitButton]")];
+    const copy = boutons.find((b) => /^copy/i.test(b.textContent.trim()));
+    const sell = boutons.find((b) => /^sell/i.test(b.textContent.trim()));
+    const genres = lireGenres(), zone = document.querySelector("[class*=currentCrime]");
+    if (genres.length !== GENRES.length || !zone) return;
     const p = panneauDvd(zone);
     p.classList.toggle("o-dark", document.body.classList.contains("dark-mode"));
     const stocks = Array(GENRES.length).fill(0);
@@ -943,11 +946,11 @@
     p.querySelector(".o-dot").classList.toggle("is-warn", stocks.some((_, i) => aCopier(i)));
 
     genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
-    sell.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
-    copy.style.opacity = c.copier === undefined ? "0.35" : "";  // rien à copier : vendre ou attendre
-    sell.style.opacity = c.vendre ? "" : "0.35";  // vendre seulement quand c'est le conseil
+    sell?.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
+    if (copy) copy.style.opacity = c.copier === undefined ? "0.35" : "";  // rien à copier : vendre ou attendre
+    if (sell) sell.style.opacity = c.vendre ? "" : "0.35";  // vendre seulement quand c'est le conseil
     let attente = document.getElementById("tbt-dvd-attente");
-    if (c.attendre && !attente) {
+    if (c.attendre && !attente && sell) {
       attente = document.createElement("span");
       attente.id = "tbt-dvd-attente";
       attente.textContent = "Bon ratio : attendre la fin des copies avant de vendre";
