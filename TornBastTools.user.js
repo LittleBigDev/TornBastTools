@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.38
+// @version      1.39
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -891,6 +891,14 @@
 #tbt-dvd .o-ecart { min-width:44px; padding:1px 8px; border-radius:999px; text-align:center; font-weight:700;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--o-go); background:var(--o-go-soft); }
 #tbt-dvd .o-ecart.is-warn { color:var(--o-warn); background:var(--o-warn-soft); }
+#tbt-dvd .o-btn, #tbt-dvd .o-save button { flex:0 0 auto; padding:2px 8px; border:1px solid var(--o-line); border-radius:6px;
+  background:var(--o-bg); color:var(--o-dim); font-size:12px; cursor:pointer; }
+#tbt-dvd .o-save { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border-top:1px solid var(--o-line); }
+#tbt-dvd .o-save[hidden] { display:none; }
+#tbt-dvd .o-save-btns { display:flex; flex-wrap:wrap; gap:6px; }
+#tbt-dvd .o-save textarea { width:100%; font:11px ui-monospace,Consolas,monospace; background:var(--o-bg-sunk); color:var(--o-text);
+  border:1px solid var(--o-line); border-radius:6px; }
+#tbt-dvd .o-save-bilan { color:var(--o-warn); font-weight:600; }
 #tbt-dvd-attente { align-self:center; flex:0 0 auto; margin:0 10px; padding:3px 10px; border-radius:999px; white-space:nowrap;
   background:#451a03; color:#fbbf24; font:600 12px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }`;
 
@@ -906,11 +914,13 @@
     p = document.createElement("div");
     p.id = "tbt-dvd";
     p.innerHTML = '<div class="o-head"><span class="o-dot"></span><span class="o-brand">TornBastTools</span>'
-      + '<span class="o-head-line" id="tbt-dvd-conseil"></span></div><div class="o-body">'
+      + '<span class="o-head-line" id="tbt-dvd-conseil"></span>'
+      + '<button class="o-btn o-save-ouvrir" title="Exporter ou importer l&#39;historique des copies">Sauvegarde</button></div><div class="o-body">'
       + GENRES.map((g, i) => `<div class="o-card">${g}<span class="o-cible" data-i="${i}" `
         + `title="Cible : nombre de DVD visé (stock + file)"></span><span class="o-ecart" data-i="${i}" `
         + `title="Écart à la cible (vert : à moins de ${TOLERANCE} %)"></span></div>`).join("")
       + "</div>";
+    zoneSauvegarde(p);
     cible.before(p);
     return p;
   }
@@ -985,6 +995,85 @@
       const g = genres.find((x) => x.i === c.copier);
       if (g && !g.choisi) g.bouton.click();  // simple choix d'affichage, aucune requête au serveur
     }
+  }
+
+  // ---------- Bootlegging : export et import de l'apprentissage ----------
+  // Ce qui affine les conseils : l'historique des Copy (bootleg_copies). Export en JSON, avec pour information les
+  // moyennes qu'on en tire et les réglages fixes (ratio, tolérance) ; seul l'historique est réimporté.
+  // Import : fusion avec l'historique existant ; une copie est identifiée par son heure, donc pas de doublon.
+  // Dans le bloc Bootlegging, sans menu d'extension (Torn PDA n'en a pas) : fichier, ou texte à copier-coller
+  // si le navigateur bloque le téléchargement ou le choix de fichier.
+
+  // Moyenne de copies par clic, par genre et par niveau entier : { Action: { "62": { clics, moyenne } } }
+  function moyennesDvd(h) {
+    const m = {};
+    h.forEach((x) => {
+      const c = ((m[GENRES[x.g - 1]] ??= {})[Math.floor(x.niveau)] ??= { clics: 0, total: 0 });
+      c.clics++;
+      c.total += x.n;
+    });
+    Object.values(m).forEach((g) => Object.values(g).forEach((c) => {
+      c.moyenne = Math.round((c.total / c.clics) * 10) / 10;
+      delete c.total;
+    }));
+    return m;
+  }
+
+  function exportDvd() {
+    const copies = GM_getValue("bootleg_copies", []);
+    return JSON.stringify({
+      script: "TornBastTools", partie: "bootlegging", date: new Date().toISOString(),
+      reglages: { genres: GENRES, ratio: RATIO, tolerance: TOLERANCE },
+      moyennes: moyennesDvd(copies),
+      copies,
+    }, null, 1);
+  }
+
+  function importDvd(texte) {
+    const copies = JSON.parse(texte)?.copies;
+    const valide = (x) => [x?.t, x?.g, x?.n, x?.niveau].every(Number.isFinite) && x.g >= 1 && x.g <= GENRES.length;
+    if (!Array.isArray(copies) || !copies.every(valide)) throw new Error("données non reconnues");
+    const avant = GM_getValue("bootleg_copies", []);
+    const apres = [...new Map([...avant, ...copies].map((x) => [x.t, { t: x.t, g: x.g, n: x.n, niveau: x.niveau }])).values()]
+      .sort((x, y) => x.t - y.t);
+    GM_setValue("bootleg_copies", apres);
+    return `${apres.length - avant.length} copies ajoutées (${apres.length} en tout)`;
+  }
+
+  // Zone repliée sous les cartes, ouverte par le bouton « Sauvegarde » de l'en-tête
+  function zoneSauvegarde(p) {
+    const z = document.createElement("div");
+    z.className = "o-save";
+    z.hidden = true;
+    z.innerHTML = '<div class="o-save-btns"><button data-a="fichier">Exporter (fichier)</button>'
+      + '<button data-a="copier">Exporter (copier le texte)</button>'
+      + '<label class="o-btn">Importer un fichier<input type="file" accept=".json,application/json,text/plain" hidden></label>'
+      + '<button data-a="coller">Importer le texte collé</button></div>'
+      + '<textarea rows="4" placeholder="Texte exporté, à copier ou à coller ici"></textarea><span class="o-save-bilan"></span>';
+    const zone = z.querySelector("textarea"), bilan = z.querySelector(".o-save-bilan");
+    const dire = (t) => { bilan.textContent = t; };
+    const importer = (texte) => { try { dire(importDvd(texte)); } catch (e) { dire(`Échec : ${e.message}`); } };
+    z.querySelector('[data-a="fichier"]').onclick = () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([exportDvd()], { type: "application/json" }));
+      a.download = `bootlegging-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      dire("Fichier téléchargé (sinon : Exporter, copier le texte)");
+    };
+    z.querySelector('[data-a="copier"]').onclick = () => {
+      zone.value = exportDvd();
+      zone.select();
+      // presse-papiers indisponible (page non sécurisée, webview) : le texte reste sélectionné, à copier à la main
+      navigator.clipboard?.writeText(zone.value).then(() => dire("Copié dans le presse-papiers"), () => dire("Texte sélectionné : le copier"))
+        ?? dire("Texte sélectionné : le copier");
+    };
+    z.querySelector('[data-a="coller"]').onclick = () => importer(zone.value);
+    z.querySelector("input").onchange = (e) => e.target.files[0]?.text().then(importer);
+    p.querySelector(".o-save-ouvrir").onclick = () => { z.hidden = !z.hidden; };
+    p.append(z);
   }
 
   const style = document.createElement("style");

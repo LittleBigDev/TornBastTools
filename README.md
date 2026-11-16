@@ -48,6 +48,13 @@ Sur la page Bootlegging, un bloc au-dessus des crimes (même style que le fork T
 
 La présélection d'un genre est un simple choix d'affichage, sans requête au serveur. Le script ne clique jamais sur Copy ni Sell.
 
+### Bootlegging : export et import de l'historique
+
+Les conseils s'affinent avec l'historique des Copy mémorisé par le script. Pour le passer à un autre appareil ou navigateur (Torn PDA compris) : bouton **Sauvegarde** dans l'en-tête du bloc Bootlegging. La zone qui s'ouvre permet :
+
+- **Exporter** l'historique des copies, avec pour information les moyennes de copies par clic (par genre et par niveau) et les réglages (ratio, tolérance) : en fichier `bootlegging-AAAA-MM-JJ.json`, ou en texte copié dans le presse-papiers (utile quand le téléchargement est bloqué, sur mobile par exemple) ;
+- **Importer** un tel fichier, ou ce texte collé dans la zone : seul l'historique est repris, fusionné avec celui déjà présent (rien n'est effacé, une copie déjà connue n'est pas dupliquée). Moyennes et cibles en sont recalculées.
+
 ## Installation
 
 1. Installer l'extension **Violentmonkey**.
