@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.36
+// @version      1.37
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -908,8 +908,8 @@
     p.innerHTML = '<div class="o-head"><span class="o-dot"></span><span class="o-brand">TornBastTools</span>'
       + '<span class="o-head-line" id="tbt-dvd-conseil"></span></div><div class="o-body">'
       + GENRES.map((g, i) => `<div class="o-card">${g}<span class="o-cible" data-i="${i}" `
-        + `title="Cible : nombre de DVD visé (stock + file)"></span><span class="o-ecart" data-i="${i}" `
-        + `title="Écart à la cible (vert : à moins de ${TOLERANCE} %)"></span></div>`).join("")
+        + `title="Target: DVDs aimed for (stock + queue)"></span><span class="o-ecart" data-i="${i}" `
+        + `title="Gap to target (green: within ${TOLERANCE}%, nothing left to copy)"></span></div>`).join("")
       + "</div>";
     cible.before(p);
     return p;
@@ -963,19 +963,19 @@
         delete caseBouton.dataset.tbtBulle;
       }
     };
-    bloquer(copy, c.copier !== undefined ? "" : c.vendre ? "Bon ratio : rien à copier, vendre" : "Bon ratio : rien à copier, attendre la fin des copies");
-    bloquer(sell, c.vendre ? "" : c.attendre ? "Attendre la fin des copies avant de vendre" : `Copies à faire avant de vendre (copier ${GENRES[c.copier]})`);
+    bloquer(copy, c.copier !== undefined ? "" : c.vendre ? "Good ratio: nothing to copy, sell" : "Good ratio: nothing to copy, wait for the copies to finish");
+    bloquer(sell, c.vendre ? "" : c.attendre ? "Wait for the copies to finish before selling" : `Copies needed before selling (copy ${GENRES[c.copier]})`);
     let attente = document.getElementById("tbt-dvd-attente");
     if (c.attendre && !attente && sell) {
       attente = document.createElement("span");
       attente.id = "tbt-dvd-attente";
-      attente.textContent = "Attendre la fin des copies";
+      attente.textContent = "Wait for the copies to finish";
       // avant la case du bouton (trop étroite pour le message), dans la ligne du crime
       (sell.closest("[class*=crimeOptionSection]") || sell).before(attente);
     } else if (!c.attendre) attente?.remove();
     ecrire(p.querySelector("#tbt-dvd-conseil"), (c.copier !== undefined
-      ? `Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
-      : c.vendre ? "Bon ratio : vendre" : "Bon ratio : attendre la fin des copies, puis vendre")
+      ? `Copy ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} per click)`
+      : c.vendre ? "Good ratio: sell" : "Good ratio: wait for the copies to finish, then sell")
       + ` · stock ${stocks.reduce((x, y) => x + y, 0)}, minimum ${Math.ceil(seuilDvd(copies))}`);
 
     // présélection du genre conseillé, seulement quand le conseil change (un choix à la main est respecté)
