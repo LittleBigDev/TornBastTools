@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.35
+// @version      1.36
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -948,10 +948,23 @@
 
     genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
     sell?.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
-    // grisé = bloqué (plus de clic possible) : Copy quand rien n'est à copier, Sell quand le conseil n'est pas de vendre
-    const bloquer = (b, oui) => { if (!b) return; b.style.opacity = oui ? "0.35" : ""; b.style.pointerEvents = oui ? "none" : ""; };
-    bloquer(copy, c.copier === undefined);
-    bloquer(sell, !c.vendre);
+    // Désactivation native (attribut disabled, comme Torn faute de nerve), avec la raison en info-bulle sur la case
+    // du bouton (un bouton désactivé ne reçoit plus le survol). Un bouton désactivé par Torn n'est jamais réactivé.
+    const bloquer = (b, raison) => {
+      if (!b) return;
+      const caseBouton = b.parentElement;
+      if (raison) {
+        if (!b.disabled) { b.disabled = true; b.dataset.tbtBloque = "1"; }
+        if (b.dataset.tbtBloque) { b.style.pointerEvents = "none"; caseBouton.dataset.tbtBulle = raison; }
+      } else if (b.dataset.tbtBloque) {
+        b.disabled = false;
+        b.style.pointerEvents = "";
+        delete b.dataset.tbtBloque;
+        delete caseBouton.dataset.tbtBulle;
+      }
+    };
+    bloquer(copy, c.copier !== undefined ? "" : c.vendre ? "Bon ratio : rien à copier, vendre" : "Bon ratio : rien à copier, attendre la fin des copies");
+    bloquer(sell, c.vendre ? "" : c.attendre ? "Attendre la fin des copies avant de vendre" : `Copies à faire avant de vendre (copier ${GENRES[c.copier]})`);
     let attente = document.getElementById("tbt-dvd-attente");
     if (c.attendre && !attente && sell) {
       attente = document.createElement("span");
