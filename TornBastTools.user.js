@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.34
+// @version      1.35
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -948,8 +948,10 @@
 
     genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
     sell?.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
-    if (copy) copy.style.opacity = c.copier === undefined ? "0.35" : "";  // rien à copier : vendre ou attendre
-    if (sell) sell.style.opacity = c.vendre ? "" : "0.35";  // vendre seulement quand c'est le conseil
+    // grisé = bloqué (plus de clic possible) : Copy quand rien n'est à copier, Sell quand le conseil n'est pas de vendre
+    const bloquer = (b, oui) => { if (!b) return; b.style.opacity = oui ? "0.35" : ""; b.style.pointerEvents = oui ? "none" : ""; };
+    bloquer(copy, c.copier === undefined);
+    bloquer(sell, !c.vendre);
     let attente = document.getElementById("tbt-dvd-attente");
     if (c.attendre && !attente && sell) {
       attente = document.createElement("span");
