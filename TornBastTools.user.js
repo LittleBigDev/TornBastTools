@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.21
+// @version      1.22
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -27,7 +27,8 @@
   const TAUX_TRADERS = {"Alcohol": 0.95, "Artifact": 0.9, "Booster": 0.95, "Candy": 0.95, "Car": 0, "Clothing": 0.25, "Defensive": 0.8, "Drug": 0.95, "Energy Drink": 0.95, "Enhancer": 0.9, "Flower": 0.98, "Jewelry": 0.8, "Material": 0.9, "Medical": 0.9, "Melee": 0.8, "Other": 0.25, "Plushie": 0.98, "Primary": 0.8, "Secondary": 0.8, "Special": 0.9, "Supply Pack": 0.95, "Temporary": 0.95, "Tool": 0.9};
   const PAS_TRADERS = ["wheel clamp"];
   const TAUX_ITEM_MARKET = 0.85;
-  // DONNÉES FIN (PAS_TRADERS : objets refusés par les traders, en minuscules)
+  const BONUS_BAZAAR = 0.02;
+  // DONNÉES FIN (PAS_TRADERS : objets refusés par les traders, en minuscules ; BONUS_BAZAAR : points ajoutés au taux des traders)
 
   const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -74,12 +75,14 @@
   const tauxTraders = (it) => (PAS_TRADERS.includes(it.name.toLowerCase()) ? 0 : TAUX_TRADERS[it.type] || 0.25);
 
   // Meilleur canal d'un objet du catalogue, partagé par tous les boutons :
-  // item market sur l'annonce la plus basse (à défaut la valeur marché) moins 15 % ; à égalité, traders puis item market.
+  // bazaar (le sien, sans frais, estimation pessimiste) = valeur marché × (taux des traders + BONUS_BAZAAR) ;
+  // item market sur l'annonce la plus basse (à défaut la valeur marché) moins 15 % ; à égalité, bazaar puis item market.
+  const netBazaar = (it) => (it.market_value || 0) * (tauxTraders(it) + BONUS_BAZAAR);
   function meilleurCanal(it, prixBas) {
-    const traders = (it.market_value || 0) * tauxTraders(it);
+    const bazaar = netBazaar(it);
     const im = (prixBas || it.market_value || 0) * TAUX_ITEM_MARKET, ville = it.sell_price || 0;
-    if (Math.max(traders, im, ville) <= 0) return null;
-    return traders >= im && traders >= ville ? "traders" : im >= ville ? "im" : "ville";
+    if (Math.max(bazaar, im, ville) <= 0) return null;
+    return bazaar >= im && bazaar >= ville ? "bazaar" : im >= ville ? "im" : "ville";
   }
 
   // Catalogue des objets, prix de rachat (sell_price) limité aux boutiques de Torn : rien ne voyage avec soi,
@@ -243,7 +246,7 @@
 
   const plan = new Map();     // id -> { qte: possédés, prix }, du dernier clic sur Remplir
   const remplis = new Set();  // ids remplis par le script
-  const ailleurs = new Map(); // id -> meilleur canal quand ce n'est pas l'item market (Traders, nom de boutique)
+  const ailleurs = new Map(); // id -> meilleur canal quand ce n'est pas l'item market (Bazaar, nom de boutique)
 
   const exemplaires = new Map(); // id d'objet unique -> Map(position de la ligne -> score)
 
@@ -425,13 +428,13 @@
         const it = catalogue[o.id];
         if (!it) continue;
         const meilleur = meilleurCanal(it, bas[o.id]);
-        // Add listing : ce qui rapporte le plus sur l'item market ; échange : ce qui rapporte le plus chez un trader
+        // Add listing : ce qui rapporte le plus sur l'item market ; échange : ce dont le meilleur canal est le bazaar
         // sur l'Add listing, il faut une annonce existante pour fixer le prix (annonce la plus basse - 1 $)
-        if (meilleur === (echange() ? "traders" : "im") && (echange() || bas[o.id])) {
+        if (meilleur === (echange() ? "bazaar" : "im") && (echange() || bas[o.id])) {
           plan.set(o.id, { qte: o.qte, prix: (bas[o.id] || 0) - 1, mv: it.market_value || 0 });
         }
         else if (meilleur === "ville") enVille.push(o.id);
-        else if (meilleur) ailleurs.set(o.id, meilleur === "traders" ? "Traders" : echange() ? "Item market" : "aucune annonce");
+        else if (meilleur) ailleurs.set(o.id, meilleur === "bazaar" ? "Bazaar" : echange() ? "Item market" : "aucune annonce");
       }
       if (enVille.length) Object.entries(await boutiques(enVille)).forEach(([id, b]) => ailleurs.set(id, b));
 
@@ -521,11 +524,11 @@
         const it = catalogue[id];
         if (!it) continue;
         const im = c.cible * TAUX_ITEM_MARKET;
-        const traders = (it.market_value || 0) * tauxTraders(it), ville = it.sell_price || 0;
-        if (Math.max(traders, ville) <= im) continue;
+        const bazaar = netBazaar(it), ville = it.sell_price || 0;
+        if (Math.max(bazaar, ville) <= im) continue;
         c.net = im;
-        if (ville >= traders) { c.mieux = "Ville"; c.mieuxNet = ville; enVille.push(id); }
-        else { c.mieux = "Traders"; c.mieuxNet = traders; }
+        if (ville >= bazaar) { c.mieux = "Ville"; c.mieuxNet = ville; enVille.push(id); }
+        else { c.mieux = "Bazaar"; c.mieuxNet = bazaar; }
       }
       if (enVille.length) Object.entries(await boutiques(enVille)).forEach(([id, b]) => { cibles.get(id).mieux = b; });
       bouton.textContent = "Mise à jour…";
@@ -671,7 +674,7 @@
   // ---------- Items (item.php) : message pour les traders ----------
   // Catégories des objets à vendre aux traders, lues sur la page (temps réel : l'inventaire de l'API est une photo
   // qui peut dater de plus d'une demi-heure). Règle : objets gardés exclus,
-  // meilleur canal = traders, une catégorie par terme, Arson et portefeuilles à part, le reste en « + other stuff to resell ».
+  // meilleur canal = bazaar, une catégorie par terme, Arson et portefeuilles à part, le reste en « + other stuff to resell ».
 
   const TERMES = { Flower: "flowers", Plushie: "plushies", Candy: "candies", Alcohol: "alcohol", Drug: "drugs",
     "Energy Drink": "energy drinks", Booster: "boosters", "Supply Pack": "supply packs", Medical: "medical",
@@ -708,7 +711,7 @@
       for (const id of candidats) {
         const it = catalogue[id], o = stock.get(id);
         if (!it) continue;
-        if (meilleurCanal(it, bas[id]) !== "traders") continue;
+        if (meilleurCanal(it, bas[id]) !== "bazaar") continue;
         const traders = (it.market_value || 0) * tauxTraders(it);
         // portefeuilles : « wallets », terme des joueurs ; les autres Supply Packs (caches, cadeaux…) gardent leur nom
         const terme = /Arson/.test(it.effect || "") ? "Arson materials"
