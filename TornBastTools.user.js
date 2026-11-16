@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.28
+// @version      1.29
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -822,13 +822,22 @@
     });
   }
 
-  // Conseil : { copier: rang du genre } tant qu'un genre sort de la tolérance et qu'une copie rapproche du ratio ;
-  // sinon { vendre } (file vide) ou { attendre }. Une copie qui dépasse sa cible reste choisie si elle rapproche
-  // l'ensemble du ratio : les cibles montent avec le stock. Pas de boucle : sans copie qui améliore, on s'arrête.
+  // Stock total minimal : celui où une demi-copie (l'erreur d'arrondi d'un clic) tient dans la tolérance pour
+  // chaque genre, le plus petit compris. Il suit les copies moyennes par clic, donc le niveau.
+  function seuilDvd(copies) {
+    const r = RATIO.reduce((a, b) => a + b, 0);
+    return Math.max(...RATIO.map((x, i) => copies[i] / 2 / (TOLERANCE / 100) / (x / r)));
+  }
+
+  // Conseil : { copier: rang du genre } ou, quand rien n'est à copier, { vendre } (file vide) ou { attendre }.
+  // Sous le stock minimal : copier le genre qui rapproche le plus du ratio. Au-dessus : copier seulement si un genre
+  // sort de la tolérance et qu'une copie rapproche du ratio (pas de recherche sans fin du ratio parfait). Une copie
+  // qui dépasse sa cible reste choisie si elle rapproche l'ensemble du ratio : les cibles montent avec le stock.
   function conseilDvd(stocks, enFile, copies) {
     const fin = enFile > 0 ? { attendre: true } : { vendre: true };
-    if (ecarts(stocks).every((x) => x.ok)) return fin;
-    let meilleur = -1, ecart = ecartRatio(stocks, RATIO);
+    const sous = stocks.reduce((a, b) => a + b, 0) < seuilDvd(copies);
+    if (!sous && ecarts(stocks).every((x) => x.ok)) return fin;
+    let meilleur = -1, ecart = sous ? Infinity : ecartRatio(stocks, RATIO);
     stocks.forEach((_, i) => {
       const e = ecartRatio(stocks.map((v, j) => (j === i ? v + copies[i] : v)), RATIO);
       if (e < ecart - 1e-9) { ecart = e; meilleur = i; }
@@ -941,9 +950,10 @@
       attente.textContent = "Bon ratio : attendre la fin des copies avant de vendre";
       sell.before(attente);
     } else if (!c.attendre) attente?.remove();
-    ecrire(p.querySelector("#tbt-dvd-conseil"), c.copier !== undefined
+    ecrire(p.querySelector("#tbt-dvd-conseil"), (c.copier !== undefined
       ? `Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
-      : c.vendre ? "Bon ratio : vendre" : "Bon ratio : attendre la fin des copies, puis vendre");
+      : c.vendre ? "Bon ratio : vendre" : "Bon ratio : attendre la fin des copies, puis vendre")
+      + ` · stock ${stocks.reduce((x, y) => x + y, 0)}, minimum ${Math.ceil(seuilDvd(copies))}`);
 
     // présélection du genre conseillé, seulement quand le conseil change (un choix à la main est respecté)
     const cle = JSON.stringify(c);
