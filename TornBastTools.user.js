@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.23
-// @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders.
+// @version      1.24
+// @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
 // @match        https://www.torn.com/item.php*
+// @match        https://www.torn.com/page.php?sid=crimes*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      api.torn.com
 // @run-at       document-idle
 // @noframes
@@ -756,6 +758,154 @@
     entete.closest(".items-wrap")?.before(sortie);
   }
 
+  // ---------- Crimes, Bootlegging : genre de DVD à copier ----------
+  // Historique de chaque Copy (genre, copies lancées, niveau) lu dans la réponse de Torn, moyenne par genre
+  // et par niveau, puis conseil : genre à copier (présélectionné, cadre vert), vendre (cadre vert sur Sell)
+  // ou attendre la fin des copies (Copy et Sell grisés). Stock d'un genre = en stock + en file d'attente.
+
+  const GENRES = ["Action", "Comedy", "Drama", "Fantasy", "Horror", "Romance", "Thriller", "Sci-Fi"];  // id Torn = rang + 1
+  const RATIO_DEFAUT = [216, 152, 120, 152, 64, 64, 88, 44];
+  const COPIES_DEFAUT = 15;  // tant qu'aucune copie n'est mémorisée
+  const bootlegging = () => location.href.includes("sid=crimes") && location.hash.includes("bootlegging");
+  const ratioDvd = () => GM_getValue("bootleg_ratio", RATIO_DEFAUT);
+
+  // Réponse d'un Copy (crimeID 8, genre dans value1) : « Copying 14 Action DVDs »
+  function noterCopie(url, texte) {
+    const u = new URL(url, location.href);
+    if (u.searchParams.get("step") !== "attempt" || u.searchParams.get("crimeID") !== "8") return;
+    const db = JSON.parse(texte).DB, s = db?.currentUserStats;
+    const n = Number(/Copying (\d+)/.exec((db?.outcome?.rewards || []).map((r) => r.text).join(" "))?.[1]);
+    if (db?.outcome?.result !== "success" || !n || !s) return;
+    const h = GM_getValue("bootleg_copies", []);
+    h.push({ t: Date.now(), g: Number(u.searchParams.get("value1")), n, niveau: s.skill + (s.skillLevel || 0) / 100 });
+    GM_setValue("bootleg_copies", h);
+  }
+
+  if (location.href.includes("sid=crimes")) {
+    const page = typeof unsafeWindow !== "undefined" ? unsafeWindow : window, origine = page.fetch;
+    const espion = function (...args) {
+      const p = origine.apply(this, args);
+      const url = String(args[0]?.url || args[0]);
+      if (url.includes("crimesData")) p.then((r) => r.clone().text()).then((t) => noterCopie(url, t)).catch(() => {});
+      return p;
+    };
+    page.fetch = typeof exportFunction === "function" ? exportFunction(espion, page) : espion;
+  }
+
+  // Copies moyennes par clic pour un genre (id), au niveau entier actuel ; à défaut, ce genre aux niveaux
+  // les plus proches, puis tous genres à ce niveau, puis tout l'historique
+  function copiesParClic(g, niveau) {
+    const h = GM_getValue("bootleg_copies", []), moy = (l) => l.reduce((s, x) => s + x.n, 0) / l.length;
+    const auNiveau = (l) => l.filter((x) => Math.floor(x.niveau) === Math.floor(niveau));
+    const genre = h.filter((x) => x.g === g);
+    if (auNiveau(genre).length >= 3) return moy(auNiveau(genre));
+    if (genre.length) return moy([...genre].sort((a, b) => Math.abs(a.niveau - niveau) - Math.abs(b.niveau - niveau)).slice(0, 5));
+    if (auNiveau(h).length) return moy(auNiveau(h));
+    return h.length ? moy(h) : COPIES_DEFAUT;
+  }
+
+  // Écart au ratio : somme des écarts de part de chaque genre
+  function ecartRatio(stocks, ratio) {
+    const total = stocks.reduce((a, b) => a + b, 0) || 1, r = ratio.reduce((a, b) => a + b, 0) || 1;
+    return stocks.reduce((s, v, i) => s + Math.abs(v / total - ratio[i] / r), 0);
+  }
+
+  // Conseil : { copier: rang du genre } si une copie rapproche du ratio, sinon { vendre } ou { attendre }.
+  // Une copie qui dépasse sa cible reste choisie si elle rapproche du ratio : les cibles montent avec le stock.
+  function conseilDvd(stocks, enFile, ratio, copies) {
+    let meilleur = -1, ecart = ecartRatio(stocks, ratio);
+    stocks.forEach((_, i) => {
+      const e = ecartRatio(stocks.map((v, j) => (j === i ? v + copies[i] : v)), ratio);
+      if (e < ecart - 1e-9) { ecart = e; meilleur = i; }
+    });
+    if (meilleur >= 0) return { copier: meilleur };
+    return enFile > 0 ? { attendre: true } : { vendre: true };
+  }
+
+  function lireGenres() {
+    return [...document.querySelectorAll("button[class*=genreStock]")].map((b) => ({
+      bouton: b,
+      i: GENRES.indexOf(b.querySelector("[class*=genreName]")?.textContent.trim()),
+      stock: parseInt(b.querySelector("[class*=currentStock]")?.textContent.replace(/\D/g, ""), 10) || 0,
+      file: parseInt(b.querySelector("[class*=statusText]")?.textContent, 10) || 0,  // « 18 queued », « 1 copying »
+      choisi: /selected/.test(b.className),
+    })).filter((x) => x.i >= 0);
+  }
+
+  const VERT = "inset 0 0 0 3px #4caf50";
+  let dernierConseil = null;
+
+  function panneauDvd(cible) {
+    let p = document.getElementById("tbt-dvd");
+    if (p) return p;
+    p = document.createElement("div");
+    p.id = "tbt-dvd";
+    p.style.cssText = "margin:6px 0;padding:8px 10px;background:#222;border:1px solid #444;border-radius:5px;color:#ddd;font-size:12px";
+    const ratio = ratioDvd();
+    p.innerHTML = '<div style="font-weight:bold;margin-bottom:6px">TornBastTools - ratio visé par genre (stock + file / cible)</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px">'
+      + GENRES.map((g, i) => `<label style="display:flex;flex-direction:column;align-items:center;gap:2px">${g}`
+        + `<input type="number" min="0" data-i="${i}" value="${ratio[i]}" style="width:52px;text-align:center">`
+        + `<span class="tbt-dvd-cible" data-i="${i}" style="color:#999"></span></label>`).join("")
+      + '</div><div id="tbt-dvd-conseil" style="margin-top:6px;font-weight:bold"></div>';
+    p.addEventListener("change", (e) => {
+      const i = Number(e.target.dataset?.i);
+      if (Number.isNaN(i)) return;
+      const r = ratioDvd().slice();
+      r[i] = Math.max(0, Number(e.target.value) || 0);
+      GM_setValue("bootleg_ratio", r);
+      dernierConseil = null;
+      majDvd();
+    });
+    cible.before(p);
+    return p;
+  }
+
+  function majDvd() {
+    const genres = lireGenres(), copy = document.querySelector('button[aria-label^="Copy,"]');
+    const sell = document.querySelector('button[aria-label^="Sell,"]'), zone = document.querySelector("[class*=currentCrime]");
+    if (genres.length !== GENRES.length || !copy || !sell || !zone) return;
+    const p = panneauDvd(zone), ratio = ratioDvd();
+    const stocks = Array(GENRES.length).fill(0);
+    genres.forEach((x) => { stocks[x.i] = x.stock + x.file; });
+    const enFile = genres.reduce((s, x) => s + x.file, 0);
+    const niveau = parseFloat(document.querySelector('[aria-label^="Skill: "]')?.getAttribute("aria-label").slice(7)) || 0;
+    const copies = GENRES.map((_, i) => copiesParClic(i + 1, niveau));
+    const c = conseilDvd(stocks, enFile, ratio, copies);
+
+    // cibles affichées : le ratio ramené au stock total (en stock + en file)
+    const total = stocks.reduce((a, b) => a + b, 0), r = ratio.reduce((a, b) => a + b, 0) || 1;
+    p.querySelectorAll(".tbt-dvd-cible").forEach((s) => {
+      const i = Number(s.dataset.i);
+      const v = `${stocks[i]} / ${Math.round((ratio[i] / r) * total)}`;
+      if (s.textContent !== v) s.textContent = v;  // pas de réécriture à l'identique : l'observateur relancerait majDvd
+    });
+
+    genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
+    sell.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
+    for (const b of [copy, sell]) b.style.opacity = c.attendre ? "0.35" : "";
+    let attente = document.getElementById("tbt-dvd-attente");
+    if (c.attendre && !attente) {
+      attente = document.createElement("span");
+      attente.id = "tbt-dvd-attente";
+      attente.style.cssText = "margin-right:8px;color:#e0a030;font-weight:bold;font-size:12px";
+      attente.textContent = "Bon ratio : attendre la fin des copies avant de vendre";
+      sell.before(attente);
+    } else if (!c.attendre) attente?.remove();
+    const texte = c.copier !== undefined ? `→ Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
+      : c.vendre ? "→ Bon ratio : vendre" : "→ Bon ratio : attendre la fin des copies, puis vendre";
+    const conseil = p.querySelector("#tbt-dvd-conseil");
+    if (conseil.textContent !== texte) conseil.textContent = texte;
+
+    // présélection du genre conseillé, seulement quand le conseil change (un choix à la main est respecté)
+    const cle = JSON.stringify(c);
+    if (cle !== dernierConseil) {
+      dernierConseil = cle;
+      const g = genres.find((x) => x.i === c.copier);
+      if (g && !g.choisi) g.bouton.click();  // simple choix d'affichage, aucune requête au serveur
+    }
+  }
+
   const style = document.createElement("style");
   style.textContent = ".tbt-ailleurs::placeholder { color: #e0a030; opacity: 1; }"
     + ".tbt-lien::placeholder { text-decoration: underline; }";
@@ -787,6 +937,8 @@
       if (!echange() && location.hash.includes("viewListing")) { ajouterBoutonMaj(); lignes().forEach(cadrer); }
       if (echange() && location.hash.includes("step=view")) evaluerEchange();
       if (location.pathname.includes("item.php")) { ajouterBoutonItems(); return; }
+      if (bootlegging()) { majDvd(); return; }
+      if (location.href.includes("sid=crimes")) return;
       if (!location.hash.includes(echange() ? "step=add" : "addListing")) return;
       ajouterBouton();
       lignes().forEach(controle);

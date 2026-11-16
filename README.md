@@ -36,6 +36,16 @@ Sous l'échange (trade.php, step=view), une ligne donne le **minimum attendu des
 
 Dans l'en-tête « Your items » de la page Items. Lit l'inventaire affiché (temps réel : celui de l'API est une photo qui peut dater de plus d'une demi-heure), garde les objets dont le meilleur canal est le bazaar (objets gardés exclus) et donne la description d'échange par catégories, de la plus grosse valeur à la plus petite (« plushies, flowers, Arson materials, wallets, + other stuff to resell » ; « wallets » pour les portefeuilles, « supply packs » pour les autres objets de cette catégorie). Le texte s'affiche au-dessus de la liste et est copié dans le presse-papiers.
 
+### Crimes, Bootlegging : genre de DVD à copier
+
+Sur la page Bootlegging, un bloc au-dessus des crimes donne le **ratio visé** par genre (une case par genre, modifiable, mémorisée dans Violentmonkey ; sous chaque case : stock actuel / cible). Le stock d'un genre compte les DVD en stock et ceux en file d'attente (copies garanties).
+
+- À chaque **Copy**, le script lit dans la réponse de Torn le nombre de copies lancées (« Copying 14 Action DVDs ») et le mémorise avec le genre et le niveau de Bootlegging. Il en tire une moyenne de copies par clic, par genre et par niveau.
+- Il conseille le genre dont une copie rapproche le plus le stock du ratio, le **présélectionne** et l'encadre en vert : il ne reste qu'à cliquer sur **Copy**. Une copie qui dépasse la cible d'un genre reste conseillée si elle rapproche l'ensemble du ratio : les cibles montent alors avec le stock, sans bond inutile.
+- Quand aucune copie ne rapproche plus du ratio : **Sell** encadré en vert s'il n'y a rien en file d'attente ; sinon Copy et Sell sont grisés, avec un message à côté de Sell : attendre la fin des copies avant de vendre.
+
+La présélection d'un genre est un simple choix d'affichage, sans requête au serveur. Le script ne clique jamais sur Copy ni Sell.
+
 ## Installation
 
 1. Installer l'extension **Violentmonkey**.
