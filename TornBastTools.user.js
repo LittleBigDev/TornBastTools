@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.29
+// @version      1.30
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -845,15 +845,16 @@
     return meilleur >= 0 ? { copier: meilleur } : fin;
   }
 
-  // Stock total visé : celui où mèneront les copies conseillées, une par une, avec les copies moyennes par clic
-  function totalVise(stocks, copies) {
+  // Plan : les copies conseillées, une par une, avec les copies moyennes par clic. Rend le stock final de
+  // chaque genre ; total visé = sa somme, genre encore à copier = stock final au-dessus du stock actuel.
+  function planDvd(stocks, copies) {
     const s = stocks.slice();
     for (let k = 0; k < 1000; k++) {  // ponytail: borne de sécurité, le conseil s'arrête bien avant (quelques dizaines)
       const c = conseilDvd(s, 0, copies);
       if (c.copier === undefined) break;
       s[c.copier] += copies[c.copier];
     }
-    return s.reduce((a, b) => a + b, 0);
+    return s;
   }
 
   function lireGenres() {
@@ -930,14 +931,16 @@
     const c = conseilDvd(stocks, enFile, copies);
 
     // cibles affichées : le ratio appliqué au stock total où mèneront les copies conseillées
-    const e = ecarts(stocks, totalVise(stocks, copies));
+    const plan = planDvd(stocks, copies), e = ecarts(stocks, plan.reduce((a, b) => a + b, 0));
+    // orange : hors tolérance, ou encore des copies prévues pour ce genre avant la cible globale
+    const aCopier = (i) => !e[i].ok || plan[i] > stocks[i];
     p.querySelectorAll(".o-cible").forEach((x) => ecrire(x, String(Math.round(e[Number(x.dataset.i)].cible))));
     p.querySelectorAll(".o-ecart").forEach((s) => {
       const x = e[Number(s.dataset.i)], n = Math.round(x.ecart);
       ecrire(s, n > 0 ? `+${n}` : String(n));
-      s.classList.toggle("is-warn", !x.ok);
+      s.classList.toggle("is-warn", aCopier(Number(s.dataset.i)));
     });
-    p.querySelector(".o-dot").classList.toggle("is-warn", !e.every((x) => x.ok));
+    p.querySelector(".o-dot").classList.toggle("is-warn", stocks.some((_, i) => aCopier(i)));
 
     genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
     sell.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
