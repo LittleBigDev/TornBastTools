@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.25
+// @version      1.26
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -764,10 +764,12 @@
   // ou attendre la fin des copies (Copy et Sell grisés). Stock d'un genre = en stock + en file d'attente.
 
   const GENRES = ["Action", "Comedy", "Drama", "Fantasy", "Horror", "Romance", "Thriller", "Sci-Fi"];  // id Torn = rang + 1
-  const RATIO_DEFAUT = [216, 152, 120, 152, 64, 64, 88, 44];
+  // Ratio visé (plus petits entiers) ; la tolérance doit couvrir une demi-copie (~7 DVD) du plus petit genre :
+  // Sci-Fi pèse 11/225, soit ~47 DVD sur ~950 au total, et 7 DVD en font 15 %
+  const RATIO = [54, 38, 30, 38, 16, 16, 22, 11];
+  const TOLERANCE = 15;  // en % de la cible, en plus comme en moins
   const COPIES_DEFAUT = 15;  // tant qu'aucune copie n'est mémorisée
   const bootlegging = () => location.href.includes("sid=crimes") && location.hash.includes("bootlegging");
-  const ratioDvd = () => GM_getValue("bootleg_ratio", RATIO_DEFAUT);
 
   // Réponse d'un Copy (crimeID 8, genre dans value1) : « Copying 14 Action DVDs »
   function noterCopie(url, texte) {
@@ -810,28 +812,39 @@
     return stocks.reduce((s, v, i) => s + Math.abs(v / total - ratio[i] / r), 0);
   }
 
-  // Cible d'un genre : sa part du ratio appliquée au stock total (en stock + en file). Écart acceptable : à moins
-  // de la tolérance (en %) de la cible, en plus comme en moins ; la tolérance grandit donc avec le stock total.
-  function ecarts(stocks, ratio, tolerance) {
-    const total = stocks.reduce((a, b) => a + b, 0), r = ratio.reduce((a, b) => a + b, 0) || 1;
+  // Cible d'un genre : sa part du ratio appliquée à un stock total (en stock + en file). Écart acceptable : à moins
+  // de TOLERANCE % de la cible, en plus comme en moins ; l'écart accepté grandit donc avec le stock total.
+  function ecarts(stocks, total = stocks.reduce((a, b) => a + b, 0)) {
+    const r = RATIO.reduce((a, b) => a + b, 0);
     return stocks.map((v, i) => {
-      const cible = (ratio[i] / r) * total;
-      return { ecart: v - cible, ok: Math.abs(v - cible) <= (cible * tolerance) / 100 };
+      const cible = (RATIO[i] / r) * total;
+      return { cible, ecart: v - cible, ok: Math.abs(v - cible) <= (cible * TOLERANCE) / 100 };
     });
   }
 
   // Conseil : { copier: rang du genre } tant qu'un genre sort de la tolérance et qu'une copie rapproche du ratio ;
   // sinon { vendre } (file vide) ou { attendre }. Une copie qui dépasse sa cible reste choisie si elle rapproche
   // l'ensemble du ratio : les cibles montent avec le stock. Pas de boucle : sans copie qui améliore, on s'arrête.
-  function conseilDvd(stocks, enFile, ratio, copies, tolerance) {
+  function conseilDvd(stocks, enFile, copies) {
     const fin = enFile > 0 ? { attendre: true } : { vendre: true };
-    if (ecarts(stocks, ratio, tolerance).every((x) => x.ok)) return fin;
-    let meilleur = -1, ecart = ecartRatio(stocks, ratio);
+    if (ecarts(stocks).every((x) => x.ok)) return fin;
+    let meilleur = -1, ecart = ecartRatio(stocks, RATIO);
     stocks.forEach((_, i) => {
-      const e = ecartRatio(stocks.map((v, j) => (j === i ? v + copies[i] : v)), ratio);
+      const e = ecartRatio(stocks.map((v, j) => (j === i ? v + copies[i] : v)), RATIO);
       if (e < ecart - 1e-9) { ecart = e; meilleur = i; }
     });
     return meilleur >= 0 ? { copier: meilleur } : fin;
+  }
+
+  // Stock total visé : celui où mèneront les copies conseillées, une par une, avec les copies moyennes par clic
+  function totalVise(stocks, copies) {
+    const s = stocks.slice();
+    for (let k = 0; k < 1000; k++) {  // ponytail: borne de sécurité, le conseil s'arrête bien avant (quelques dizaines)
+      const c = conseilDvd(s, 0, copies);
+      if (c.copier === undefined) break;
+      s[c.copier] += copies[c.copier];
+    }
+    return s.reduce((a, b) => a + b, 0);
   }
 
   function lireGenres() {
@@ -845,8 +858,6 @@
   }
 
   const VERT = "inset 0 0 0 3px #34d399";
-  const TOLERANCE_DEFAUT = 10;  // en % de la cible
-  const toleranceDvd = () => GM_getValue("bootleg_tolerance", TOLERANCE_DEFAUT);
   let dernierConseil = null;
 
   // Style repris du fork Torn Oracle (couleurs, en-tête, cartes, mode sombre de Torn)
@@ -863,11 +874,10 @@
 #tbt-dvd .o-dot { width:8px; height:8px; border-radius:50%; background:var(--o-go); flex:0 0 auto; }
 #tbt-dvd .o-dot.is-warn { background:var(--o-warn); }
 #tbt-dvd .o-head-line { flex:1 1 auto; min-width:0; font-weight:600; color:var(--o-text); }
-#tbt-dvd .o-tol { display:flex; align-items:center; gap:4px; color:var(--o-dim); font-size:12px; }
 #tbt-dvd .o-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(82px,1fr)); gap:6px; padding:8px 10px; background:var(--o-bg-sunk); }
 #tbt-dvd .o-card { display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 4px; border:1px solid var(--o-line);
   border-radius:8px; background:var(--o-bg); color:var(--o-dim); font-size:12px; }
-#tbt-dvd input[type=number] { font:inherit; width:58px; padding:3px 5px; text-align:center; border-radius:7px;
+#tbt-dvd input[type=number] { font:inherit; font-weight:700; width:58px; padding:3px 5px; text-align:center; border-radius:7px;
   border:1px solid var(--o-line); background:var(--o-bg); color:var(--o-text); }
 #tbt-dvd input:focus-visible { outline:2px solid var(--o-accent); outline-offset:1px; }
 #tbt-dvd .o-ecart { min-width:44px; padding:1px 8px; border-radius:999px; text-align:center; font-weight:700;
@@ -886,25 +896,12 @@
     }
     p = document.createElement("div");
     p.id = "tbt-dvd";
-    const ratio = ratioDvd();
     p.innerHTML = '<div class="o-head"><span class="o-dot"></span><span class="o-brand">TornBastTools</span>'
-      + '<span class="o-head-line" id="tbt-dvd-conseil"></span>'
-      + `<label class="o-tol" title="Écart accepté autour de la cible de chaque genre">Tolérance <input type="number" min="0" `
-      + `data-tol="1" value="${toleranceDvd()}"> %</label></div><div class="o-body">`
-      + GENRES.map((g, i) => `<label class="o-card">${g}<input type="number" min="0" data-i="${i}" value="${ratio[i]}" `
-        + `title="Part visée (ratio)"><span class="o-ecart" data-i="${i}"></span></label>`).join("")
+      + '<span class="o-head-line" id="tbt-dvd-conseil"></span></div><div class="o-body">'
+      + GENRES.map((g, i) => `<label class="o-card">${g}<input type="number" readonly data-i="${i}" `
+        + `title="Cible : nombre de DVD visé (stock + file)"><span class="o-ecart" data-i="${i}" `
+        + `title="Écart à la cible (vert : à moins de ${TOLERANCE} %)"></span></label>`).join("")
       + "</div>";
-    p.addEventListener("change", (e) => {
-      const v = Math.max(0, Number(e.target.value) || 0);
-      if (e.target.dataset?.tol) GM_setValue("bootleg_tolerance", v);
-      else if (e.target.dataset?.i !== undefined) {
-        const r = ratioDvd().slice();
-        r[Number(e.target.dataset.i)] = v;
-        GM_setValue("bootleg_ratio", r);
-      } else return;
-      dernierConseil = null;
-      majDvd();
-    });
     cible.before(p);
     return p;
   }
@@ -916,16 +913,21 @@
     const genres = lireGenres(), copy = document.querySelector('button[aria-label^="Copy,"]');
     const sell = document.querySelector('button[aria-label^="Sell,"]'), zone = document.querySelector("[class*=currentCrime]");
     if (genres.length !== GENRES.length || !copy || !sell || !zone) return;
-    const p = panneauDvd(zone), ratio = ratioDvd(), tolerance = toleranceDvd();
+    const p = panneauDvd(zone);
     p.classList.toggle("o-dark", document.body.classList.contains("dark-mode"));
     const stocks = Array(GENRES.length).fill(0);
     genres.forEach((x) => { stocks[x.i] = x.stock + x.file; });
     const enFile = genres.reduce((s, x) => s + x.file, 0);
     const niveau = parseFloat(document.querySelector('[aria-label^="Skill: "]')?.getAttribute("aria-label").slice(7)) || 0;
     const copies = GENRES.map((_, i) => copiesParClic(i + 1, niveau));
-    const c = conseilDvd(stocks, enFile, ratio, copies, tolerance);
+    const c = conseilDvd(stocks, enFile, copies);
 
-    const e = ecarts(stocks, ratio, tolerance);
+    // cibles affichées : le ratio appliqué au stock total où mèneront les copies conseillées
+    const e = ecarts(stocks, totalVise(stocks, copies));
+    p.querySelectorAll("input[data-i]").forEach((x) => {
+      const v = String(Math.round(e[Number(x.dataset.i)].cible));
+      if (x.value !== v) x.value = v;
+    });
     p.querySelectorAll(".o-ecart").forEach((s) => {
       const x = e[Number(s.dataset.i)], n = Math.round(x.ecart);
       ecrire(s, n > 0 ? `+${n}` : String(n));
