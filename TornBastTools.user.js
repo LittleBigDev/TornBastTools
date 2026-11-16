@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.26
+// @version      1.27
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -877,9 +877,7 @@
 #tbt-dvd .o-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(82px,1fr)); gap:6px; padding:8px 10px; background:var(--o-bg-sunk); }
 #tbt-dvd .o-card { display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 4px; border:1px solid var(--o-line);
   border-radius:8px; background:var(--o-bg); color:var(--o-dim); font-size:12px; }
-#tbt-dvd input[type=number] { font:inherit; font-weight:700; width:58px; padding:3px 5px; text-align:center; border-radius:7px;
-  border:1px solid var(--o-line); background:var(--o-bg); color:var(--o-text); }
-#tbt-dvd input:focus-visible { outline:2px solid var(--o-accent); outline-offset:1px; }
+#tbt-dvd .o-cible { font-size:16px; font-weight:700; color:var(--o-text); }
 #tbt-dvd .o-ecart { min-width:44px; padding:1px 8px; border-radius:999px; text-align:center; font-weight:700;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--o-go); background:var(--o-go-soft); }
 #tbt-dvd .o-ecart.is-warn { color:var(--o-warn); background:var(--o-warn-soft); }
@@ -898,9 +896,9 @@
     p.id = "tbt-dvd";
     p.innerHTML = '<div class="o-head"><span class="o-dot"></span><span class="o-brand">TornBastTools</span>'
       + '<span class="o-head-line" id="tbt-dvd-conseil"></span></div><div class="o-body">'
-      + GENRES.map((g, i) => `<label class="o-card">${g}<input type="number" readonly data-i="${i}" `
-        + `title="Cible : nombre de DVD visé (stock + file)"><span class="o-ecart" data-i="${i}" `
-        + `title="Écart à la cible (vert : à moins de ${TOLERANCE} %)"></span></label>`).join("")
+      + GENRES.map((g, i) => `<div class="o-card">${g}<span class="o-cible" data-i="${i}" `
+        + `title="Cible : nombre de DVD visé (stock + file)"></span><span class="o-ecart" data-i="${i}" `
+        + `title="Écart à la cible (vert : à moins de ${TOLERANCE} %)"></span></div>`).join("")
       + "</div>";
     cible.before(p);
     return p;
@@ -924,10 +922,7 @@
 
     // cibles affichées : le ratio appliqué au stock total où mèneront les copies conseillées
     const e = ecarts(stocks, totalVise(stocks, copies));
-    p.querySelectorAll("input[data-i]").forEach((x) => {
-      const v = String(Math.round(e[Number(x.dataset.i)].cible));
-      if (x.value !== v) x.value = v;
-    });
+    p.querySelectorAll(".o-cible").forEach((x) => ecrire(x, String(Math.round(e[Number(x.dataset.i)].cible))));
     p.querySelectorAll(".o-ecart").forEach((s) => {
       const x = e[Number(s.dataset.i)], n = Math.round(x.ecart);
       ecrire(s, n > 0 ? `+${n}` : String(n));
