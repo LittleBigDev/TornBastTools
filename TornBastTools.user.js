@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.24
+// @version      1.25
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Bootlegging : genre de DVD à copier selon un ratio visé.
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
 // @match        https://www.torn.com/trade.php*
@@ -810,16 +810,28 @@
     return stocks.reduce((s, v, i) => s + Math.abs(v / total - ratio[i] / r), 0);
   }
 
-  // Conseil : { copier: rang du genre } si une copie rapproche du ratio, sinon { vendre } ou { attendre }.
-  // Une copie qui dépasse sa cible reste choisie si elle rapproche du ratio : les cibles montent avec le stock.
-  function conseilDvd(stocks, enFile, ratio, copies) {
+  // Cible d'un genre : sa part du ratio appliquée au stock total (en stock + en file). Écart acceptable : à moins
+  // de la tolérance (en %) de la cible, en plus comme en moins ; la tolérance grandit donc avec le stock total.
+  function ecarts(stocks, ratio, tolerance) {
+    const total = stocks.reduce((a, b) => a + b, 0), r = ratio.reduce((a, b) => a + b, 0) || 1;
+    return stocks.map((v, i) => {
+      const cible = (ratio[i] / r) * total;
+      return { ecart: v - cible, ok: Math.abs(v - cible) <= (cible * tolerance) / 100 };
+    });
+  }
+
+  // Conseil : { copier: rang du genre } tant qu'un genre sort de la tolérance et qu'une copie rapproche du ratio ;
+  // sinon { vendre } (file vide) ou { attendre }. Une copie qui dépasse sa cible reste choisie si elle rapproche
+  // l'ensemble du ratio : les cibles montent avec le stock. Pas de boucle : sans copie qui améliore, on s'arrête.
+  function conseilDvd(stocks, enFile, ratio, copies, tolerance) {
+    const fin = enFile > 0 ? { attendre: true } : { vendre: true };
+    if (ecarts(stocks, ratio, tolerance).every((x) => x.ok)) return fin;
     let meilleur = -1, ecart = ecartRatio(stocks, ratio);
     stocks.forEach((_, i) => {
       const e = ecartRatio(stocks.map((v, j) => (j === i ? v + copies[i] : v)), ratio);
       if (e < ecart - 1e-9) { ecart = e; meilleur = i; }
     });
-    if (meilleur >= 0) return { copier: meilleur };
-    return enFile > 0 ? { attendre: true } : { vendre: true };
+    return meilleur >= 0 ? { copier: meilleur } : fin;
   }
 
   function lireGenres() {
@@ -832,28 +844,64 @@
     })).filter((x) => x.i >= 0);
   }
 
-  const VERT = "inset 0 0 0 3px #4caf50";
+  const VERT = "inset 0 0 0 3px #34d399";
+  const TOLERANCE_DEFAUT = 10;  // en % de la cible
+  const toleranceDvd = () => GM_getValue("bootleg_tolerance", TOLERANCE_DEFAUT);
   let dernierConseil = null;
+
+  // Style repris du fork Torn Oracle (couleurs, en-tête, cartes, mode sombre de Torn)
+  const STYLE_DVD = `
+#tbt-dvd { --o-bg:#fff; --o-bg-sunk:#f4f6f8; --o-bg-raise:#fff; --o-line:#dde3e9; --o-text:#10161c; --o-dim:#4a5763;
+  --o-faint:#626f7c; --o-accent:#0d9488; --o-go:#047857; --o-go-soft:#d1fae5; --o-warn:#b45309; --o-warn-soft:#fef3c7;
+  box-sizing:border-box; width:100%; margin:10px 0; border:1px solid var(--o-line); border-radius:10px;
+  background:var(--o-bg); color:var(--o-text); font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+#tbt-dvd.o-dark { --o-bg:#171d24; --o-bg-sunk:#10151b; --o-bg-raise:#1e262f; --o-line:#2c3742; --o-text:#e7edf3; --o-dim:#b3c0cd;
+  --o-faint:#97a5b3; --o-accent:#2dd4bf; --o-go:#34d399; --o-go-soft:#064e3b; --o-warn:#fbbf24; --o-warn-soft:#451a03; }
+#tbt-dvd *, #tbt-dvd *::before, #tbt-dvd *::after { box-sizing:inherit; font-family:inherit; }
+#tbt-dvd .o-head { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--o-bg-raise); border-bottom:1px solid var(--o-line); }
+#tbt-dvd .o-brand { font-weight:700; letter-spacing:.02em; color:var(--o-accent); flex:0 0 auto; }
+#tbt-dvd .o-dot { width:8px; height:8px; border-radius:50%; background:var(--o-go); flex:0 0 auto; }
+#tbt-dvd .o-dot.is-warn { background:var(--o-warn); }
+#tbt-dvd .o-head-line { flex:1 1 auto; min-width:0; font-weight:600; color:var(--o-text); }
+#tbt-dvd .o-tol { display:flex; align-items:center; gap:4px; color:var(--o-dim); font-size:12px; }
+#tbt-dvd .o-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(82px,1fr)); gap:6px; padding:8px 10px; background:var(--o-bg-sunk); }
+#tbt-dvd .o-card { display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 4px; border:1px solid var(--o-line);
+  border-radius:8px; background:var(--o-bg); color:var(--o-dim); font-size:12px; }
+#tbt-dvd input[type=number] { font:inherit; width:58px; padding:3px 5px; text-align:center; border-radius:7px;
+  border:1px solid var(--o-line); background:var(--o-bg); color:var(--o-text); }
+#tbt-dvd input:focus-visible { outline:2px solid var(--o-accent); outline-offset:1px; }
+#tbt-dvd .o-ecart { min-width:44px; padding:1px 8px; border-radius:999px; text-align:center; font-weight:700;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--o-go); background:var(--o-go-soft); }
+#tbt-dvd .o-ecart.is-warn { color:var(--o-warn); background:var(--o-warn-soft); }
+#tbt-dvd-attente { margin-right:8px; color:#fbbf24; font-weight:bold; font-size:12px; }`;
 
   function panneauDvd(cible) {
     let p = document.getElementById("tbt-dvd");
     if (p) return p;
+    if (!document.getElementById("tbt-dvd-style")) {
+      const s = document.createElement("style");
+      s.id = "tbt-dvd-style";
+      s.textContent = STYLE_DVD;
+      document.head.append(s);
+    }
     p = document.createElement("div");
     p.id = "tbt-dvd";
-    p.style.cssText = "margin:6px 0;padding:8px 10px;background:#222;border:1px solid #444;border-radius:5px;color:#ddd;font-size:12px";
     const ratio = ratioDvd();
-    p.innerHTML = '<div style="font-weight:bold;margin-bottom:6px">TornBastTools - ratio visé par genre (stock + file / cible)</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:8px">'
-      + GENRES.map((g, i) => `<label style="display:flex;flex-direction:column;align-items:center;gap:2px">${g}`
-        + `<input type="number" min="0" data-i="${i}" value="${ratio[i]}" style="width:52px;text-align:center">`
-        + `<span class="tbt-dvd-cible" data-i="${i}" style="color:#999"></span></label>`).join("")
-      + '</div><div id="tbt-dvd-conseil" style="margin-top:6px;font-weight:bold"></div>';
+    p.innerHTML = '<div class="o-head"><span class="o-dot"></span><span class="o-brand">TornBastTools</span>'
+      + '<span class="o-head-line" id="tbt-dvd-conseil"></span>'
+      + `<label class="o-tol" title="Écart accepté autour de la cible de chaque genre">Tolérance <input type="number" min="0" `
+      + `data-tol="1" value="${toleranceDvd()}"> %</label></div><div class="o-body">`
+      + GENRES.map((g, i) => `<label class="o-card">${g}<input type="number" min="0" data-i="${i}" value="${ratio[i]}" `
+        + `title="Part visée (ratio)"><span class="o-ecart" data-i="${i}"></span></label>`).join("")
+      + "</div>";
     p.addEventListener("change", (e) => {
-      const i = Number(e.target.dataset?.i);
-      if (Number.isNaN(i)) return;
-      const r = ratioDvd().slice();
-      r[i] = Math.max(0, Number(e.target.value) || 0);
-      GM_setValue("bootleg_ratio", r);
+      const v = Math.max(0, Number(e.target.value) || 0);
+      if (e.target.dataset?.tol) GM_setValue("bootleg_tolerance", v);
+      else if (e.target.dataset?.i !== undefined) {
+        const r = ratioDvd().slice();
+        r[Number(e.target.dataset.i)] = v;
+        GM_setValue("bootleg_ratio", r);
+      } else return;
       dernierConseil = null;
       majDvd();
     });
@@ -861,25 +909,29 @@
     return p;
   }
 
+  // Écrit seulement si ça change : une réécriture à l'identique relancerait l'observateur, donc majDvd, en boucle
+  const ecrire = (el, texte) => { if (el.textContent !== texte) el.textContent = texte; };
+
   function majDvd() {
     const genres = lireGenres(), copy = document.querySelector('button[aria-label^="Copy,"]');
     const sell = document.querySelector('button[aria-label^="Sell,"]'), zone = document.querySelector("[class*=currentCrime]");
     if (genres.length !== GENRES.length || !copy || !sell || !zone) return;
-    const p = panneauDvd(zone), ratio = ratioDvd();
+    const p = panneauDvd(zone), ratio = ratioDvd(), tolerance = toleranceDvd();
+    p.classList.toggle("o-dark", document.body.classList.contains("dark-mode"));
     const stocks = Array(GENRES.length).fill(0);
     genres.forEach((x) => { stocks[x.i] = x.stock + x.file; });
     const enFile = genres.reduce((s, x) => s + x.file, 0);
     const niveau = parseFloat(document.querySelector('[aria-label^="Skill: "]')?.getAttribute("aria-label").slice(7)) || 0;
     const copies = GENRES.map((_, i) => copiesParClic(i + 1, niveau));
-    const c = conseilDvd(stocks, enFile, ratio, copies);
+    const c = conseilDvd(stocks, enFile, ratio, copies, tolerance);
 
-    // cibles affichées : le ratio ramené au stock total (en stock + en file)
-    const total = stocks.reduce((a, b) => a + b, 0), r = ratio.reduce((a, b) => a + b, 0) || 1;
-    p.querySelectorAll(".tbt-dvd-cible").forEach((s) => {
-      const i = Number(s.dataset.i);
-      const v = `${stocks[i]} / ${Math.round((ratio[i] / r) * total)}`;
-      if (s.textContent !== v) s.textContent = v;  // pas de réécriture à l'identique : l'observateur relancerait majDvd
+    const e = ecarts(stocks, ratio, tolerance);
+    p.querySelectorAll(".o-ecart").forEach((s) => {
+      const x = e[Number(s.dataset.i)], n = Math.round(x.ecart);
+      ecrire(s, n > 0 ? `+${n}` : String(n));
+      s.classList.toggle("is-warn", !x.ok);
     });
+    p.querySelector(".o-dot").classList.toggle("is-warn", !e.every((x) => x.ok));
 
     genres.forEach((x) => x.bouton.style.setProperty("box-shadow", c.copier === x.i ? VERT : "", "important"));
     sell.style.setProperty("box-shadow", c.vendre ? VERT : "", "important");
@@ -888,14 +940,12 @@
     if (c.attendre && !attente) {
       attente = document.createElement("span");
       attente.id = "tbt-dvd-attente";
-      attente.style.cssText = "margin-right:8px;color:#e0a030;font-weight:bold;font-size:12px";
       attente.textContent = "Bon ratio : attendre la fin des copies avant de vendre";
       sell.before(attente);
     } else if (!c.attendre) attente?.remove();
-    const texte = c.copier !== undefined ? `→ Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
-      : c.vendre ? "→ Bon ratio : vendre" : "→ Bon ratio : attendre la fin des copies, puis vendre";
-    const conseil = p.querySelector("#tbt-dvd-conseil");
-    if (conseil.textContent !== texte) conseil.textContent = texte;
+    ecrire(p.querySelector("#tbt-dvd-conseil"), c.copier !== undefined
+      ? `Copier ${GENRES[c.copier]} (~${Math.round(copies[c.copier])} par clic)`
+      : c.vendre ? "Bon ratio : vendre" : "Bon ratio : attendre la fin des copies, puis vendre");
 
     // présélection du genre conseillé, seulement quand le conseil change (un choix à la main est respecté)
     const cle = JSON.stringify(c);
