@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.41
+// @version      1.42
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -774,22 +774,37 @@
   }
 
   let boutonBazaar = null;
+  // ponytail: version de débogage, bouton toujours affiché avec l'état lu ; repasser à false une fois l'affichage validé
+  const DEBUG_BAZAAR = true;
 
   async function verifierBazaar() {
-    if (document.hidden || !GM_getValue("cle_api", "")) return;  // pas de demande de clé sur une page quelconque
+    if (DEBUG_BAZAAR) afficherBazaar(true);
+    if (document.hidden) return;
+    if (!GM_getValue("cle_api", "")) { diagnostic("pas de clé API"); return; }  // pas de demande de clé sur une page quelconque
     try {
       const [profil, contenu] = await Promise.all([api("user/?selections=basic"), bazaarData("getBazaarContent&ID=")]);
       const d = JSON.parse(contenu);
       const risque = profil.status?.state === "Okay"
         && !!d.state?.isBazaarExists && !d.state.isClosed && Number(d.totalQuantity) > 0;
+      diagnostic(`statut ${profil.status?.state}, bazaar ${d.state?.isBazaarExists ? (d.state.isClosed ? "fermé" : "ouvert") : "absent"}, `
+        + `${d.totalQuantity} objets, risque ${risque ? "oui" : "non"}`);
       afficherBazaar(risque);
     } catch (e) {
+      diagnostic(`erreur : ${e.message}`);
       console.error("[TornBastTools] état du bazaar", e);
     }
   }
 
+  // Débogage : état lu affiché sous le libellé du bouton
+  function diagnostic(texte) {
+    if (!DEBUG_BAZAAR || !boutonBazaar) return;
+    boutonBazaar.innerHTML = "";
+    boutonBazaar.append("Fermer le bazaar", document.createElement("br"),
+      Object.assign(document.createElement("small"), { textContent: texte }));
+  }
+
   function afficherBazaar(risque) {
-    if (!risque) { boutonBazaar?.remove(); boutonBazaar = null; return; }
+    if (!risque && !DEBUG_BAZAAR) { boutonBazaar?.remove(); boutonBazaar = null; return; }
     if (boutonBazaar) return;
     const b = document.createElement("button");
     b.type = "button";
@@ -803,6 +818,8 @@
       try {
         await bazaarData("closeBazaar");
         afficherBazaar(false);
+        b.disabled = false;
+        verifierBazaar();
       } catch (e) {
         b.textContent = `Erreur : ${e.message}, réessayer`;
         b.disabled = false;
