@@ -1,11 +1,9 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.40
-// @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders.
-// @match        https://www.torn.com/page.php?sid=ItemMarket*
-// @match        https://www.torn.com/trade.php*
-// @match        https://www.torn.com/item.php*
+// @version      1.41
+// @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
+// @match        https://www.torn.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -755,6 +753,69 @@
     entete.append(b);
     entete.closest(".items-wrap")?.before(sortie);
   }
+
+  // ---------- Toutes les pages : bouton flottant « Fermer le bazaar » ----------
+  // Une vente du bazaar arrive en argent sur soi, que n'importe qui peut alors muger (buy mug). Le bouton s'affiche,
+  // en haut à droite, quand ce risque existe : à Torn (statut Okay : ni hôpital, ni prison, ni vol, ni étranger)
+  // avec un bazaar ouvert qui contient des objets. Un clic, une requête : step=closeBazaar (relevée le 12/11/2026).
+  // État du bazaar : bazaar.php?sid=bazaarData&step=getBazaarContent (l'API Torn ne voit pas s'il est fermé).
+
+  const BAZAAR_RELECTURE_MS = 30_000;
+
+  function bazaarData(step) {
+    const rfcv = /(?:^|;\s*)rfc_v=([^;]+)/.exec(document.cookie)?.[1] || "";
+    return new Promise((ok, ko) => GM_xmlhttpRequest({
+      method: "GET",
+      url: `https://www.torn.com/bazaar.php?sid=bazaarData&step=${step}&rfcv=${rfcv}`,
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      onload: (r) => (r.status === 200 ? ok(r.responseText) : ko(new Error(`HTTP ${r.status}`))),
+      onerror: () => ko(new Error("réseau")),
+    }));
+  }
+
+  let boutonBazaar = null;
+
+  async function verifierBazaar() {
+    if (document.hidden || !GM_getValue("cle_api", "")) return;  // pas de demande de clé sur une page quelconque
+    try {
+      const [profil, contenu] = await Promise.all([api("user/?selections=basic"), bazaarData("getBazaarContent&ID=")]);
+      const d = JSON.parse(contenu);
+      const risque = profil.status?.state === "Okay"
+        && !!d.state?.isBazaarExists && !d.state.isClosed && Number(d.totalQuantity) > 0;
+      afficherBazaar(risque);
+    } catch (e) {
+      console.error("[TornBastTools] état du bazaar", e);
+    }
+  }
+
+  function afficherBazaar(risque) {
+    if (!risque) { boutonBazaar?.remove(); boutonBazaar = null; return; }
+    if (boutonBazaar) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "torn-btn";
+    b.style.cssText = "position:fixed;top:70px;right:12px;z-index:100001;background:#c62828;color:#fff;"
+      + "border:1px solid #ff8a80;box-shadow:0 3px 10px rgba(0,0,0,.6);font-weight:bold";
+    b.textContent = "Fermer le bazaar";
+    bulle(b, "Bazaar ouvert à Torn : une vente arrive en argent sur soi, exposé au mug");
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      try {
+        await bazaarData("closeBazaar");
+        afficherBazaar(false);
+      } catch (e) {
+        b.textContent = `Erreur : ${e.message}, réessayer`;
+        b.disabled = false;
+        console.error("[TornBastTools]", e);
+      }
+    });
+    document.body.append(b);
+    boutonBazaar = b;
+  }
+
+  verifierBazaar();
+  setInterval(verifierBazaar, BAZAAR_RELECTURE_MS);
+  document.addEventListener("visibilitychange", verifierBazaar);
 
   const style = document.createElement("style");
   style.textContent = ".tbt-ailleurs::placeholder { color: #e0a030; opacity: 1; }"
