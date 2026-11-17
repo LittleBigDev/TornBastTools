@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.43
+// @version      1.44
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -762,15 +762,13 @@
 
   const BAZAAR_RELECTURE_MS = 30_000;
 
-  function bazaarData(step) {
+  // Requête de la page elle-même (cookies de session de Torn) : par GM_xmlhttpRequest, Torn répond 403
+  async function bazaarData(step) {
     const rfcv = /(?:^|;\s*)rfc_v=([^;]+)/.exec(document.cookie)?.[1] || "";
-    return new Promise((ok, ko) => GM_xmlhttpRequest({
-      method: "GET",
-      url: `https://www.torn.com/bazaar.php?sid=bazaarData&step=${step}&rfcv=${rfcv}`,
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-      onload: (r) => (r.status === 200 ? ok(r.responseText) : ko(new Error(`HTTP ${r.status}`))),
-      onerror: () => ko(new Error("réseau")),
-    }));
+    const r = await fetch(`/bazaar.php?sid=bazaarData&step=${step}&rfcv=${rfcv}`,
+      { credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.text();
   }
 
   let boutonBazaar = null;
@@ -799,8 +797,7 @@
   function diagnostic(texte) {
     if (!DEBUG_BAZAAR || !boutonBazaar) return;
     boutonBazaar.innerHTML = "";
-    boutonBazaar.append("Fermer le bazaar", document.createElement("br"),
-      Object.assign(document.createElement("small"), { textContent: texte }));
+    boutonBazaar.append("Fermer le bazaar", Object.assign(document.createElement("small"), { textContent: texte }));
   }
 
   function afficherBazaar(risque) {
@@ -808,9 +805,7 @@
     if (boutonBazaar) return;
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "torn-btn";
-    b.style.cssText = "position:fixed;top:70px;right:12px;z-index:100001;background:#c62828;color:#fff;"
-      + "border:1px solid #ff8a80;box-shadow:0 3px 10px rgba(0,0,0,.6);font-weight:bold;height:auto;line-height:1.3;padding:6px 10px";
+    b.className = "tbt-bazaar";
     b.textContent = "Fermer le bazaar";
     bulle(b, "Bazaar ouvert à Torn : une vente arrive en argent sur soi, exposé au mug");
     b.addEventListener("click", async () => {
@@ -821,7 +816,8 @@
         b.disabled = false;
         verifierBazaar();
       } catch (e) {
-        b.textContent = `Erreur : ${e.message}, réessayer`;
+        b.innerHTML = "";
+        b.append("Réessayer : fermer le bazaar", Object.assign(document.createElement("small"), { textContent: `erreur : ${e.message}` }));
         b.disabled = false;
         console.error("[TornBastTools]", e);
       }
@@ -836,7 +832,16 @@
 
   const style = document.createElement("style");
   style.textContent = ".tbt-ailleurs::placeholder { color: #e0a030; opacity: 1; }"
-    + ".tbt-lien::placeholder { text-decoration: underline; }";
+    + ".tbt-lien::placeholder { text-decoration: underline; }"
+    // Bouton « Fermer le bazaar » : même style que les boutons de Torn Oracle (rouge « danger » du même thème)
+    + ".tbt-bazaar { position: fixed; top: 70px; right: 12px; z-index: 100001; appearance: none; cursor: pointer;"
+    + " display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 8px;"
+    + " border: 1px solid #b91c1c; background: #b91c1c; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.25);"
+    + " font: 600 13px/1.3 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; touch-action: manipulation; }"
+    + ".tbt-bazaar:hover { filter: brightness(1.08); }"
+    + ".tbt-bazaar:disabled { opacity: .45; cursor: progress; }"
+    + ".tbt-bazaar small { font-size: 11px; font-weight: 400; opacity: .9; }"
+    + "body.dark-mode .tbt-bazaar { background: #dc2626; border-color: #f87171; }";
   document.head.append(style);
 
   // Une seule bulle flottante pour toute la page : les lignes de Torn coupent ce qui dépasse (overflow hidden)
