@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.42
+// @version      1.43
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -810,7 +810,7 @@
     b.type = "button";
     b.className = "torn-btn";
     b.style.cssText = "position:fixed;top:70px;right:12px;z-index:100001;background:#c62828;color:#fff;"
-      + "border:1px solid #ff8a80;box-shadow:0 3px 10px rgba(0,0,0,.6);font-weight:bold";
+      + "border:1px solid #ff8a80;box-shadow:0 3px 10px rgba(0,0,0,.6);font-weight:bold;height:auto;line-height:1.3;padding:6px 10px";
     b.textContent = "Fermer le bazaar";
     bulle(b, "Bazaar ouvert à Torn : une vente arrive en argent sur soi, exposé au mug");
     b.addEventListener("click", async () => {
