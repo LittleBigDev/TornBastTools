@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.44
+// @version      1.45
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -772,8 +772,8 @@
   }
 
   let boutonBazaar = null;
-  // ponytail: version de débogage, bouton toujours affiché avec l'état lu ; repasser à false une fois l'affichage validé
-  const DEBUG_BAZAAR = true;
+  // Débogage : true affiche le bouton en permanence, avec l'état lu sous le libellé
+  const DEBUG_BAZAAR = false;
 
   async function verifierBazaar() {
     if (DEBUG_BAZAAR) afficherBazaar(true);
