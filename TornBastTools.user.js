@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TornBastTools
 // @namespace    wardogs.tornbasttools
-// @version      1.45
+// @version      1.46
 // @description  Outils Torn pour les membres Wardogs. Item market : remplissage de l'Add listing et mise à jour des prix de mes annonces. Échange : ajout des objets à vendre aux traders, minimum attendu et contrôle de l'offre. Items : message pour les traders. Partout : bouton Fermer le bazaar quand le bazaar ouvert expose au mug.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -783,7 +783,7 @@
       const [profil, contenu] = await Promise.all([api("user/?selections=basic"), bazaarData("getBazaarContent&ID=")]);
       const d = JSON.parse(contenu);
       const risque = profil.status?.state === "Okay"
-        && !!d.state?.isBazaarExists && !d.state.isClosed && Number(d.totalQuantity) > 0;
+        && !!d.state?.isBazaarExists && !d.state.isClosed;
       diagnostic(`statut ${profil.status?.state}, bazaar ${d.state?.isBazaarExists ? (d.state.isClosed ? "fermé" : "ouvert") : "absent"}, `
         + `${d.totalQuantity} objets, risque ${risque ? "oui" : "non"}`);
       afficherBazaar(risque);

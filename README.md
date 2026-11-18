@@ -38,7 +38,7 @@ Dans l'en-tête « Your items » de la page Items. Lit l'inventaire affiché (te
 
 ### Toutes les pages : bouton « Fermer le bazaar »
 
-Une vente du bazaar arrive en argent sur soi, que n'importe qui peut alors muger (buy mug). Un bouton rouge flottant, en haut à droite de toutes les pages, s'affiche quand ce risque existe : à Torn (ni à l'hôpital, ni en prison, ni en vol, ni à l'étranger) avec un bazaar ouvert qui contient des objets. Un clic ferme le bazaar (une seule requête, comme le bouton de Torn). État relu à chaque chargement de page, au retour sur l'onglet, puis toutes les 30 secondes sur l'onglet affiché, et uniquement une fois la clé API enregistrée.
+Une vente du bazaar arrive en argent sur soi, que n'importe qui peut alors muger (buy mug). Un bouton rouge flottant, en haut à droite de toutes les pages, s'affiche quand ce risque existe : à Torn (ni à l'hôpital, ni en prison, ni en vol, ni à l'étranger) avec un bazaar ouvert, même vide. Un clic ferme le bazaar (une seule requête, comme le bouton de Torn). État relu à chaque chargement de page, au retour sur l'onglet, puis toutes les 30 secondes sur l'onglet affiché, et uniquement une fois la clé API enregistrée.
 
 ### Crimes
 
